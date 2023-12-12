@@ -1,13 +1,17 @@
 package main
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strconv"
 	"sync"
 
+	"github.com/fxamacker/cbor/v2"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/nozzle/throttler"
 	"github.com/schollz/progressbar/v3"
 )
@@ -15,99 +19,86 @@ import (
 const ordHost = "http://38.99.82.238:8080"
 
 var (
-	client         = &http.Client{}
+	retryClient    = retryablehttp.NewClient()
+	client         = retryClient.StandardClient()
 	inscriptionIDs []string
-	inscriptions   = make(map[string]Inscription)
-	sats           = make(map[string]Sat)
-	batchSize      = 200 // Much higher than this and it actually goes slower. About 7 seconds for 3000 inscriptions, 1.50 seconds for 3000 sats
+	inscriptions   = make(map[string]InscriptionExtended)
+	batchSize      = 100    // Much higher than this and it actually goes slower. About 7 seconds for 3000 inscriptions, 1.50 seconds for 3000 sats
+	block          = 775492 // 767430
 )
 
 func main() {
-	// get block
-	// // get all pages using more, page_index
-	// // get each inscription
-	// // // get metadata for each inscription and add to full object
-	// /// //
-	// once block is finished batch write all full objects to db
-	// repeat for next block
+	retryClient.Logger = nil
+	retryClient.RetryMax = 10
 
 	fmt.Println("Starting Ord Scraper")
 	fmt.Printf("Using Host: %v\n", ordHost)
 
-	// highestBlock, err := getHighestBlock()
-	// if err != nil {
-	// 	panic(err)
-	// }
-	highestBlock := 800000 // TODO: remove this
+	highestBlock, err := getHighestBlock()
+	if err != nil {
+		panic(err)
+	}
 	fmt.Printf("Current Highest Block: %v\n", highestBlock)
 
-	// TODO: get last block written to db and start from there
+	// get last block written to db and start from there
 	// We will always overwrite the last block in the db so we don't need to worry about missing any
-	block := 800000
+	getAndSetStartingBlockFromDB()
 	fmt.Printf("Starting at block: %v\n", block)
 
 	for block <= highestBlock {
 
-		// Get all inscriptions for block
-		spinner := progressbar.Default(-1, fmt.Sprintf("Fetching Inscription ID's for Block: %v", block))
-		more := true
-		page := 0
-		for more {
-			b, err := getBlock(block, page)
-			if err != nil {
-				fmt.Println(err)
-			}
-			inscriptionIDs = append(inscriptionIDs, b.Inscriptions...)
-			page++
-			more = b.More
-			spinner.Add(1)
-		}
-		spinner.Finish()
+		getAndWriteInscriptionIDs()
+		getAndWriteInscriptions()
+		convertAndWriteInscriptionsToDB()
 
-		fmt.Printf("Block: %v, Inscriptions: %v\n", block, len(inscriptionIDs))
-
-		mutex := &sync.RWMutex{}
-		bar := progressbar.Default(int64(len(inscriptionIDs)), fmt.Sprintf("Fetching Inscriptions for Block: %v", block))
-		t := throttler.New(batchSize, len(inscriptionIDs))
-		for _, id := range inscriptionIDs {
-			go func(id string) {
-				ins, err := getInscription(id)
-				if err != nil {
-					panic(err)
-				}
-				mutex.Lock()
-				inscriptions[ins.InscriptionID] = *ins
-				mutex.Unlock()
-				bar.Add(1)
-				t.Done(nil)
-			}(id)
-			t.Throttle()
-		}
-
-		// Fetch sat data and update inscriptions
-		bar = progressbar.Default(int64(len(inscriptionIDs)), "Fetching Sat Data for Inscriptions")
-		t = throttler.New(batchSize, len(inscriptionIDs))
-		for k, ins := range inscriptions {
-			go func(sat uint64, id string) {
-				s, err := getSat(sat)
-				if err != nil {
-					panic(err)
-				}
-				mutex.Lock()
-				sats[id] = *s
-				mutex.Unlock()
-				bar.Add(1)
-				t.Done(nil)
-			}(ins.Sat, k)
-			t.Throttle()
-		}
-
-		// TODO: write to db
+		// Reset for next block
+		inscriptionIDs = []string{}
+		inscriptions = make(map[string]InscriptionExtended)
 
 		block++
 	}
 
 	fmt.Printf("Total Inscriptions: %v\n", len(inscriptions))
+}
+
+func getAndWriteInscriptionIDs() {
+	spinner := progressbar.Default(-1, fmt.Sprintf("Fetching Inscription ID's for Block: %v", block))
+	more := true
+	page := 0
+	for more {
+		b, err := getBlock(block, page)
+		if err != nil {
+			fmt.Println(err)
+		}
+		inscriptionIDs = append(inscriptionIDs, b.Inscriptions...)
+		page++
+		more = b.More
+		spinner.Add(1)
+	}
+	spinner.Finish()
+	fmt.Print("\033[F")
+}
+
+func getAndWriteInscriptions() {
+	mutex := &sync.RWMutex{}
+	bar := progressbar.Default(int64(len(inscriptionIDs)), fmt.Sprintf("Fetching Inscriptions for Block: %v", block))
+	t := throttler.New(batchSize, len(inscriptionIDs))
+	for _, id := range inscriptionIDs {
+		go func(id string) {
+			ins, err := getInscription(id)
+			if err != nil {
+				// TODO: Maybe retry this block on error.
+				panic(err)
+			}
+			mutex.Lock()
+			inscriptions[ins.InscriptionID] = *ins
+			mutex.Unlock()
+			bar.Add(1)
+			t.Done(nil)
+		}(id)
+		t.Throttle()
+	}
+	fmt.Println("")
 }
 
 func getHighestBlock() (int, error) {
@@ -138,27 +129,13 @@ func getBlock(height int, page int) (*Block, error) {
 	return &result, nil
 }
 
-func getInscription(inscriptionID string) (*Inscription, error) {
+func getInscription(inscriptionID string) (*InscriptionExtended, error) {
 	body, err := makeRequest(fmt.Sprintf("%s/inscription/%v", ordHost, inscriptionID))
 	if err != nil {
 		return nil, err
 	}
 
-	var result Inscription
-	err = json.Unmarshal(body, &result)
-	if err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
-
-func getSat(sat uint64) (*Sat, error) {
-	body, err := makeRequest(fmt.Sprintf("%s/sat/%v", ordHost, sat))
-	if err != nil {
-		return nil, err
-	}
-
-	var result Sat
+	var result InscriptionExtended
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		return nil, err
@@ -182,16 +159,49 @@ func makeRequest(url string) ([]byte, error) {
 	return io.ReadAll(response.Body)
 }
 
-func removeDuplicate(strSlice []string) []string {
-	allKeys := make(map[string]bool)
-	list := []string{}
-	for _, item := range strSlice {
-		if _, value := allKeys[item]; !value {
-			allKeys[item] = true
-			list = append(list, item)
-		}
+func convertAndWriteInscriptionsToDB() {
+}
+
+func getAndSetStartingBlockFromDB() int {
+	return 0
+}
+
+func decodeMetadata(v string) (*string, error) {
+	data, err := hex.DecodeString(v)
+	if err != nil {
+		return nil, err
 	}
-	return list
+	opts := cbor.DecOptions{
+		MaxArrayElements: 65535,
+		MaxMapPairs:      65535,
+		MaxNestedLevels:  65535,
+		DefaultMapType:   reflect.TypeOf(map[string]interface{}{}),
+	}
+
+	d, err := opts.DecMode()
+	if err != nil {
+		return nil, err
+	}
+
+	var metadata interface{}
+	err = d.Unmarshal(data, &metadata)
+	if err != nil {
+		return nil, err
+	}
+
+	jsonStr, err := json.Marshal(metadata)
+	if err != nil {
+		return nil, err
+	}
+
+	escaped, err := json.Marshal(string(jsonStr))
+	if err != nil {
+		return nil, err
+	}
+
+	strEscaped := string(escaped)
+
+	return &strEscaped, nil
 }
 
 // func formatJSON(data []byte) string {
@@ -211,7 +221,7 @@ type Block struct {
 	PageIndex    int      `json:"page_index"`
 }
 
-type Inscription struct {
+type InscriptionExtended struct {
 	Address           string   `json:"address"`
 	Children          []string `json:"children"`
 	ContentLength     int      `json:"content_length"`
@@ -225,10 +235,22 @@ type Inscription struct {
 	Parent            string   `json:"parent,omitempty"`
 	Previous          string   `json:"previous"`
 	// Rune              interface{} `json:"rune"` // uint128
-	Sat       uint64 `json:"sat,omitempty"`
-	Satpoint  string `json:"satpoint,omitempty"`
-	Timestamp int    `json:"timestamp"`
-	// SatData   *Sat
+	Sat             uint64                 `json:"sat,omitempty"`
+	Satpoint        string                 `json:"satpoint,omitempty"`
+	Timestamp       int                    `json:"timestamp"`
+	Charms          uint16                 `json:"charms,omitempty"`          // uint16 representing combination of charms
+	CharmsExtended  []Charm                `json:"charms_extended,omitempty"` // Decoded charms with title and icon emoji
+	SatRarity       string                 `json:"sat_rarity,omitempty"`
+	MetadataHex     string                 `json:"metadata_hex,omitempty"` // CBOR encoded. Decoded on conversion to DB type
+	Metadata        map[string]interface{} `json:"metadata,omitempty"`     // CBOR encoded. Decoded on conversion to DB type
+	MetaProtocol    string                 `json:"meta_protocol,omitempty"`
+	ContentEncoding string                 `json:"content_encoding,omitempty"`
+	Content         string                 `json:"content,omitempty"` // Escaped string which could be JSON, Markdown or plain text. Null otherwise
+}
+
+type Charm struct {
+	Title string `json:"title"`
+	Icon  string `json:"icon"`
 }
 
 type Sat struct {
