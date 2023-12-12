@@ -30,7 +30,7 @@ var (
 	inscriptionIDs         []string
 	inscriptions           = make(map[string]InscriptionExtended)
 	batchSize              = 100
-	block                  = 775492 // 767430
+	block                  = 767430
 	mongoConnection        = os.Getenv("MONGO_CONNECTION")
 	mongoClient            *mongo.Client
 	mongoCtx               = context.TODO()
@@ -57,7 +57,7 @@ func ConnectMongoDB() {
 		panic("inscriptionsCollection is nil")
 	}
 	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "inscription_id", Value: 1}},
+		Keys:    bson.D{{Key: "inscriptionId", Value: 1}},
 		Options: options.Index().SetUnique(true),
 	})
 	if err != nil {
@@ -65,14 +65,14 @@ func ConnectMongoDB() {
 	}
 
 	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "sat_rarity", Value: 1}},
+		Keys:    bson.D{{Key: "satRarity", Value: 1}},
 		Options: options.Index().SetUnique(false),
 	})
 	if err != nil {
 		panic(err)
 	}
 	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "content_type", Value: "text"}, {Key: "content", Value: "text"}, {Key: "meta_protocol", Value: "text"}},
+		Keys:    bson.D{{Key: "contentType", Value: "text"}, {Key: "content", Value: "text"}, {Key: "metaProtocol", Value: "text"}},
 		Options: options.Index().SetUnique(false),
 	})
 	if err != nil {
@@ -225,6 +225,11 @@ func makeRequest(url string) ([]byte, error) {
 }
 
 func convertAndWriteInscriptionsToDB() {
+	if len(inscriptions) == 0 {
+		fmt.Printf("No Inscriptions to write to DB for block: %v\n", block)
+		fmt.Println("")
+		return
+	}
 	ins := []DBInscription{}
 	for _, v := range inscriptions {
 		ins = append(ins, DBInscription{
@@ -270,14 +275,14 @@ func convertAndWriteInscriptionsToDB() {
 
 func deleteInscriptionsFromBlock() {
 	fmt.Printf("Deleting inscriptions from last written block: %v\n", block)
-	_, err := inscriptionsCollection.DeleteMany(mongoCtx, bson.M{"genesis_height": block})
+	_, err := inscriptionsCollection.DeleteMany(mongoCtx, bson.M{"genesisHeight": block})
 	if err != nil {
 		fmt.Println(err)
 	}
 }
 
 func getAndSetStartingBlockFromDB() int {
-	v, err := inscriptionsCollection.Find(mongoCtx, bson.M{}, options.Find().SetSort(bson.D{{Key: "genesis_height", Value: -1}}).SetLimit(1))
+	v, err := inscriptionsCollection.Find(mongoCtx, bson.M{}, options.Find().SetSort(bson.D{{Key: "genesisHeight", Value: -1}}).SetLimit(1))
 	if err != nil {
 		return block
 	}
@@ -402,7 +407,7 @@ type DBInscription struct {
 	SatRarity         string                 `bson:"satRarity"`
 	MetadataHex       string                 `bson:"metadataHex"` // CBOR encoded. Decoded on conversion to DB type
 	Metadata          map[string]interface{} `bson:"metadata"`    // CBOR decoded json object
-	MetaProtocol      string                 `bson:"metaprotocol"`
+	MetaProtocol      string                 `bson:"metaProtocol"`
 	ContentEncoding   string                 `bson:"contentEncoding"`
 	Content           string                 `bson:"content"` // Escaped string which could be JSON, Markdown or plain text. Null otherwise
 }
