@@ -22,77 +22,36 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const ordHost = "http://38.99.82.238:8080"
+// const ordHost = "http://38.99.82.238:8080"
 
 var (
 	retryClient            = retryablehttp.NewClient()
 	client                 = retryClient.StandardClient()
 	inscriptionIDs         []string
 	inscriptions           = make(map[string]InscriptionExtended)
-	batchSize              = 100
+	batchSize              = 500
 	block                  = 767430
+	host                   = os.Getenv("ORD_HOST")
 	mongoConnection        = os.Getenv("MONGO_CONNECTION")
 	mongoClient            *mongo.Client
 	mongoCtx               = context.TODO()
 	inscriptionsCollection *mongo.Collection
 )
 
-func ConnectMongoDB() {
-	fmt.Println("Connecting to MongoDB")
-	mongoOptions := options.Client().ApplyURI(mongoConnection)
-
-	var err error
-	mongoClient, err = mongo.Connect(mongoCtx, mongoOptions)
-	if err != nil {
-		panic(err)
-	}
-
-	err = mongoClient.Ping(mongoCtx, nil)
-	if err != nil {
-		panic(err)
-	}
-
-	inscriptionsCollection = mongoClient.Database("ord").Collection("inscriptions")
-	if inscriptionsCollection == nil {
-		panic("inscriptionsCollection is nil")
-	}
-	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "inscriptionId", Value: 1}},
-		Options: options.Index().SetUnique(true),
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "satRarity", Value: 1}},
-		Options: options.Index().SetUnique(false),
-	})
-	if err != nil {
-		panic(err)
-	}
-	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "contentType", Value: "text"}, {Key: "content", Value: "text"}, {Key: "metaProtocol", Value: "text"}},
-		Options: options.Index().SetUnique(false),
-	})
-	if err != nil {
-		panic(err)
-	}
-	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "metadata.$**", Value: 1}},
-		Options: options.Index().SetUnique(false),
-	})
-	if err != nil {
-		panic(err)
-	}
-}
-
 func main() {
 	retryClient.Logger = nil
 	retryClient.RetryMax = 10
 
+	if host == "" {
+		panic("ORD_HOST env var not set")
+	}
+
+	if mongoConnection == "" {
+		panic("MONGO_CONNECTION env var not set")
+	}
+
 	fmt.Println("Starting Ord Scraper")
-	fmt.Printf("Using Host: %v\n", ordHost)
+	fmt.Printf("Using Host: %v\n", host)
 
 	ConnectMongoDB()
 
@@ -125,6 +84,57 @@ func main() {
 	}
 
 	fmt.Printf("Total Inscriptions: %v\n", len(inscriptions))
+}
+
+func ConnectMongoDB() {
+	fmt.Println("Connecting to MongoDB")
+	mongoOptions := options.Client().ApplyURI(mongoConnection)
+
+	var err error
+	mongoClient, err = mongo.Connect(mongoCtx, mongoOptions)
+	if err != nil {
+		panic(err)
+	}
+
+	err = mongoClient.Ping(mongoCtx, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	inscriptionsCollection = mongoClient.Database("ord").Collection("inscriptions")
+	if inscriptionsCollection == nil {
+		panic("inscriptionsCollection is nil")
+	}
+	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "id", Value: 1}},
+		Options: options.Index().SetUnique(true),
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "sat_rarity", Value: 1}},
+		Options: options.Index().SetUnique(false),
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "content_type", Value: "text"}, {Key: "content", Value: "text"}, {Key: "metaprotocol", Value: "text"}},
+		Options: options.Index().SetUnique(false),
+	})
+	if err != nil {
+		panic(err)
+	}
+	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "metadata.$**", Value: 1}},
+		Options: options.Index().SetUnique(false),
+	})
+	if err != nil {
+		panic(err)
+	}
 }
 
 func getAndWriteInscriptionIDs() {
@@ -167,7 +177,7 @@ func getAndWriteInscriptions() {
 }
 
 func getHighestBlock() (int, error) {
-	body, err := makeRequest(fmt.Sprintf("%s/r/blockheight", ordHost))
+	body, err := makeRequest(fmt.Sprintf("%s/r/blockheight", host))
 	if err != nil {
 		return -1, err
 	}
@@ -181,7 +191,7 @@ func getHighestBlock() (int, error) {
 }
 
 func getBlock(height int, page int) (*Block, error) {
-	body, err := makeRequest(fmt.Sprintf("%s/inscriptions/block/%v/%v", ordHost, height, page))
+	body, err := makeRequest(fmt.Sprintf("%s/inscriptions/block/%v/%v", host, height, page))
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +205,7 @@ func getBlock(height int, page int) (*Block, error) {
 }
 
 func getInscription(inscriptionID string) (*InscriptionExtended, error) {
-	body, err := makeRequest(fmt.Sprintf("%s/e/inscription/%v", ordHost, inscriptionID))
+	body, err := makeRequest(fmt.Sprintf("%s/e/inscription/%v", host, inscriptionID))
 	if err != nil {
 		return nil, err
 	}
@@ -232,30 +242,47 @@ func convertAndWriteInscriptionsToDB() {
 	}
 	ins := []DBInscription{}
 	for _, v := range inscriptions {
+		date := time.Now()
 		ins = append(ins, DBInscription{
+			CreatedAt:          date,
+			UpdatedAt:          date,
+			ID:                 v.InscriptionID,
+			Number:             v.InscriptionNumber,
+			Address:            v.Address,
+			GenesisAddress:     v.Address,
+			GenesisBlockHeight: v.GenesisHeight,
+			GenesisBlockHash:   v.BlockHash,
+			GenesisTxID:        v.TxID,
+			GenesisTimestamp:   v.Timestamp,
+			TxID:               v.TxID,
+			Location:           v.Satpoint,
+			Output:             v.SatpointOutpoint,
+			Value:              strconv.FormatUint(v.OutputValue, 10),
+			SatOrdinal:         strconv.FormatUint(v.Sat, 10),
+			SatRarity:          v.SatRarity,
+			ContentType:        v.ContentType,
+			ContentLength:      v.ContentLength,
+			Timestamp:          time.Unix(int64(v.Timestamp), 0),
+			Offset:             strconv.FormatUint(v.SatpointOffset, 10),
+
 			// Rune:              v.Rune,
-			Address:           v.Address,
-			Children:          v.Children,
-			ContentLength:     v.ContentLength,
-			ContentType:       v.ContentType,
-			GenesisFee:        v.GenesisFee,
-			GenesisHeight:     v.GenesisHeight,
-			InscriptionID:     v.InscriptionID,
-			InscriptionNumber: strconv.Itoa(v.InscriptionNumber),
-			Next:              v.Next,
-			OutputValue:       v.OutputValue,
-			Parent:            v.Parent,
-			Previous:          v.Previous,
-			Sat:               strconv.FormatUint(v.Sat, 10),
-			Timestamp:         time.Unix(int64(v.Timestamp), 0),
-			Satpoint:          v.Satpoint,
-			CharmsExtended:    v.CharmsExtended,
-			SatRarity:         v.SatRarity,
-			MetadataHex:       v.MetadataHex,
-			Metadata:          v.Metadata,
-			MetaProtocol:      v.MetaProtocol,
-			ContentEncoding:   v.ContentEncoding,
-			Content:           v.Content,
+
+			Children:        v.Children,
+			Charms:          v.Charms,
+			CharmsExtended:  v.CharmsExtended,
+			MetadataHex:     v.MetadataHex,
+			Metadata:        v.Metadata,
+			MetaProtocol:    v.MetaProtocol,
+			ContentEncoding: v.ContentEncoding,
+			Content:         v.Content,
+			Recursive:       v.Recursive,
+			RecursiveRefs:   v.RecursiveRefs,
+			Next:            v.Next,
+			OutputValue:     strconv.FormatUint(v.OutputValue, 10),
+			Parent:          v.Parent,
+			Previous:        v.Previous,
+			Sat:             strconv.FormatUint(v.Sat, 10),
+			Satpoint:        v.Satpoint,
 		})
 	}
 
@@ -275,14 +302,14 @@ func convertAndWriteInscriptionsToDB() {
 
 func deleteInscriptionsFromBlock() {
 	fmt.Printf("Deleting inscriptions from last written block: %v\n", block)
-	_, err := inscriptionsCollection.DeleteMany(mongoCtx, bson.M{"genesisHeight": block})
+	_, err := inscriptionsCollection.DeleteMany(mongoCtx, bson.M{"genesis_block_height": block})
 	if err != nil {
 		fmt.Println(err)
 	}
 }
 
 func getAndSetStartingBlockFromDB() int {
-	v, err := inscriptionsCollection.Find(mongoCtx, bson.M{}, options.Find().SetSort(bson.D{{Key: "genesisHeight", Value: -1}}).SetLimit(1))
+	v, err := inscriptionsCollection.Find(mongoCtx, bson.M{}, options.Find().SetSort(bson.D{{Key: "genesis_block_height", Value: -1}}).SetLimit(1))
 	if err != nil {
 		return block
 	}
@@ -291,7 +318,7 @@ func getAndSetStartingBlockFromDB() int {
 		return block
 	}
 	if len(results) > 0 {
-		return int(results[0].GenesisHeight)
+		return int(results[0].GenesisBlockHeight)
 	}
 	return block
 }
@@ -356,26 +383,32 @@ type InscriptionExtended struct {
 	Children          []string `json:"children"`
 	ContentLength     int      `json:"content_length"`
 	ContentType       string   `json:"content_type"`
-	GenesisFee        int      `json:"genesis_fee"`
+	GenesisFee        uint64   `json:"genesis_fee"`
 	GenesisHeight     uint32   `json:"genesis_height"`
 	InscriptionID     string   `json:"inscription_id"`
-	InscriptionNumber int      `json:"inscription_number"`
+	InscriptionNumber int32    `json:"inscription_number"`
 	Next              string   `json:"next"`
-	OutputValue       int      `json:"output_value"`
+	OutputValue       uint64   `json:"output_value"`
 	Parent            string   `json:"parent,omitempty"`
 	Previous          string   `json:"previous"`
 	// Rune              interface{} `json:"rune"` // uint128
-	Sat             uint64                 `json:"sat,omitempty"`
-	Satpoint        string                 `json:"satpoint,omitempty"`
-	Timestamp       int                    `json:"timestamp"`
-	Charms          uint16                 `json:"charms,omitempty"`          // uint16 representing combination of charms
-	CharmsExtended  []Charm                `json:"charms_extended,omitempty"` // Decoded charms with title and icon emoji
-	SatRarity       string                 `json:"sat_rarity,omitempty"`
-	MetadataHex     string                 `json:"metadata_hex,omitempty"` // CBOR encoded. Decoded on conversion to DB type
-	Metadata        map[string]interface{} `json:"metadata,omitempty"`     // CBOR encoded. Decoded on conversion to DB type
-	MetaProtocol    string                 `json:"meta_protocol,omitempty"`
-	ContentEncoding string                 `json:"content_encoding,omitempty"`
-	Content         string                 `json:"content,omitempty"` // Escaped string which could be JSON, Markdown or plain text. Null otherwise
+	Sat              uint64                 `json:"sat,omitempty"`
+	Satpoint         string                 `json:"satpoint,omitempty"`
+	Timestamp        int64                  `json:"timestamp"`
+	Charms           uint16                 `json:"charms,omitempty"`          // uint16 representing combination of charms
+	CharmsExtended   []Charm                `json:"charms_extended,omitempty"` // Decoded charms with title and icon emoji
+	SatRarity        string                 `json:"sat_rarity,omitempty"`
+	MetadataHex      string                 `json:"metadata_hex,omitempty"` // CBOR encoded. Decoded on conversion to DB type
+	Metadata         map[string]interface{} `json:"metadata,omitempty"`     // CBOR encoded. Decoded on conversion to DB type
+	MetaProtocol     string                 `json:"meta_protocol,omitempty"`
+	ContentEncoding  string                 `json:"content_encoding,omitempty"`
+	Content          string                 `json:"content,omitempty"` // Escaped string which could be JSON, Markdown or plain text. Null otherwise
+	Recursive        bool                   `json:"recursive,omitempty"`
+	RecursiveRefs    []string               `json:"recursive_refs,omitempty"`
+	TxID             string                 `json:"tx_id,omitempty"`
+	BlockHash        string                 `json:"block_hash,omitempty"`
+	SatpointOutpoint string                 `json:"satpoint_outpoint,omitempty"`
+	SatpointOffset   uint64                 `json:"satpoint_offset,omitempty"`
 }
 
 type Charm struct {
@@ -384,30 +417,42 @@ type Charm struct {
 }
 
 type DBInscription struct {
-	// ID primitive.ObjectID `bson:"_id"`
-	// CreatedAt time.Time `bson:"created_at"`
-	// UpdatedAt time.Time `bson:"updated_at"`
+	CreatedAt time.Time `bson:"created_at"`
+	UpdatedAt time.Time `bson:"updated_at"`
 	// Rune              string   `bson:"rune"` // uint128
-	Address           string                 `bson:"address"`
-	Children          []string               `bson:"children"`
-	ContentLength     int                    `bson:"contentLength"`
-	ContentType       string                 `bson:"contentType"`
-	GenesisFee        int                    `bson:"genesisFee"`
-	GenesisHeight     uint32                 `bson:"genesisHeight"`
-	InscriptionID     string                 `bson:"inscriptionId"`
-	InscriptionNumber string                 `bson:"inscriptionNumber"`
-	Next              string                 `bson:"next"`
-	OutputValue       int                    `bson:"outputValue"`
-	Parent            string                 `bson:"parent,omitempty"`
-	Previous          string                 `bson:"previous"`
-	Sat               string                 `bson:"sat,omitempty"`
-	Satpoint          string                 `bson:"satpoint,omitempty"`
-	Timestamp         time.Time              `bson:"timestamp"`
-	CharmsExtended    []Charm                `bson:"charmsExtended"` // Decoded charms with title and icon emoji
-	SatRarity         string                 `bson:"satRarity"`
-	MetadataHex       string                 `bson:"metadataHex"` // CBOR encoded. Decoded on conversion to DB type
-	Metadata          map[string]interface{} `bson:"metadata"`    // CBOR decoded json object
-	MetaProtocol      string                 `bson:"metaProtocol"`
-	ContentEncoding   string                 `bson:"contentEncoding"`
-	Content           string                 `bson:"content"` // Escaped string which could be JSON, Markdown or plain text. Null otherwise
+	ID                 string `bson:"id"`
+	Number             int32  `bson:"number"`
+	Address            string `bson:"address"`
+	GenesisAddress     string `bson:"genesis_address"`
+	GenesisBlockHeight uint32 `bson:"genesis_block_height"`
+	GenesisBlockHash   string `bson:"genesis_block_hash"`
+	GenesisTxID        string `bson:"genesis_tx_id"`
+	GenesisTimestamp   int64  `bson:"genesis_timestamp"`
+	TxID               string `bson:"tx_id"`
+	Location           string `bson:"location"`
+	Output             string `bson:"output"`
+	Value              string `bson:"value"`
+	Offset             string `bson:"offset"`
+	SatOrdinal         string `bson:"sat_ordinal"`
+	SatRarity          string `bson:"sat_rarity"`
+	// SatCoinbaseHeight string                 `bson:"sat_coinbase_height"`
+	ContentType     string                 `bson:"content_type"`
+	ContentLength   int                    `bson:"contentLength"`
+	Timestamp       time.Time              `bson:"timestamp"`
+	Recursive       bool                   `bson:"recursive,omitempty"`
+	RecursiveRefs   []string               `bson:"recursive_refs,omitempty"`
+	Children        []string               `bson:"children"`
+	Charms          uint16                 `bson:"charms,omitempty"` // uint16 representing combination of charms
+	CharmsExtended  []Charm                `bson:"charms_extended"`  // Decoded charms with title and icon emoji
+	MetadataHex     string                 `bson:"metadata_hex"`     // CBOR encoded. Decoded on conversion to DB type
+	Metadata        map[string]interface{} `bson:"metadata"`         // CBOR decoded json object
+	MetaProtocol    string                 `bson:"metaprotocol"`
+	ContentEncoding string                 `bson:"content_encoding"`
+	Content         string                 `bson:"content"` // Escaped string which could be JSON, Markdown or plain text. Null otherwise
+	Next            string                 `bson:"next"`
+	OutputValue     string                 `bson:"outputValue"`
+	Parent          string                 `bson:"parent,omitempty"`
+	Previous        string                 `bson:"previous"`
+	Sat             string                 `bson:"sat,omitempty"`
+	Satpoint        string                 `bson:"satpoint,omitempty"`
 }
