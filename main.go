@@ -297,6 +297,10 @@ func convertAndWriteInscriptionsToDB() {
 	}
 
 	fmt.Printf("Wrote %v inscriptions to DB for block: %v\n", len(inscriptions), block)
+	for _, v := range inscriptions {
+		fmt.Printf("Block Timestamp: %v\n", time.Unix(int64(v.Timestamp), 0).Format(time.RFC1123))
+		break
+	}
 	fmt.Println("")
 }
 
