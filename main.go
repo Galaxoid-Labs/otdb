@@ -292,14 +292,14 @@ func convertAndWriteInscriptionsToDB() {
 
 func deleteInscriptionsFromBlock() {
 	fmt.Printf("Deleting inscriptions from last written block: %v\n", block)
-	_, err := inscriptionsCollection.DeleteMany(mongoCtx, bson.M{"genesis_block_height": block})
+	_, err := inscriptionsCollection.DeleteMany(mongoCtx, bson.M{"genesis_height": block})
 	if err != nil {
 		fmt.Println(err)
 	}
 }
 
 func getAndSetStartingBlockFromDB() int {
-	v, err := inscriptionsCollection.Find(mongoCtx, bson.M{}, options.Find().SetSort(bson.D{{Key: "genesis_block_height", Value: -1}}).SetLimit(1))
+	v, err := inscriptionsCollection.Find(mongoCtx, bson.M{}, options.Find().SetSort(bson.D{{Key: "genesis_height", Value: -1}}).SetLimit(1))
 	if err != nil {
 		return block
 	}
