@@ -106,7 +106,7 @@ func ConnectMongoDB() {
 		panic("inscriptionsCollection is nil")
 	}
 	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "id", Value: 1}},
+		Keys:    bson.D{{Key: "inscription_id", Value: 1}},
 		Options: options.Index().SetUnique(true),
 	})
 	if err != nil {
@@ -242,47 +242,33 @@ func convertAndWriteInscriptionsToDB() {
 	}
 	ins := []DBInscription{}
 	for _, v := range inscriptions {
-		date := time.Now()
 		ins = append(ins, DBInscription{
-			CreatedAt: date,
-			UpdatedAt: date,
-			ID:        v.InscriptionID,
-			Number:    v.InscriptionNumber,
-			// Address:            v.Address,
-			GenesisAddress:     v.GenesisAddress,
-			GenesisBlockHeight: v.GenesisHeight,
-			GenesisBlockHash:   v.BlockHash,
-			GenesisTxID:        v.TxID,
-			GenesisTimestamp:   v.Timestamp,
-			TxID:               v.TxID,
-			Location:           v.Satpoint,
-			Output:             v.SatpointOutpoint,
-			Value:              strconv.FormatUint(v.OutputValue, 10),
-			SatOrdinal:         strconv.FormatUint(v.Sat, 10),
-			SatRarity:          v.SatRarity,
-			ContentType:        v.ContentType,
-			ContentLength:      v.ContentLength,
-			Timestamp:          time.Unix(int64(v.Timestamp), 0),
-			Offset:             strconv.FormatUint(v.SatpointOffset, 10),
-
-			// Rune:              v.Rune,
-
-			Children:        v.Children,
-			Charms:          v.Charms,
-			CharmsExtended:  v.CharmsExtended,
-			MetadataHex:     v.MetadataHex,
-			Metadata:        v.Metadata,
-			MetaProtocol:    v.MetaProtocol,
-			ContentEncoding: v.ContentEncoding,
-			Content:         v.Content,
-			Recursive:       v.Recursive,
-			RecursiveRefs:   v.RecursiveRefs,
-			Next:            v.Next,
-			OutputValue:     strconv.FormatUint(v.OutputValue, 10),
-			Parent:          v.Parent,
-			Previous:        v.Previous,
-			Sat:             strconv.FormatUint(v.Sat, 10),
-			Satpoint:        v.Satpoint,
+			ContentLength:     v.ContentLength,
+			ContentType:       v.ContentType,
+			GenesisFee:        strconv.FormatUint(v.GenesisFee, 10),
+			GenesisHeight:     v.GenesisHeight,
+			GenesisTxID:       v.TxID,
+			GenesisAddress:    v.GenesisAddress,
+			GenesisBlockHash:  v.BlockHash,
+			InscriptionID:     v.InscriptionID,
+			InscriptionNumber: v.InscriptionNumber,
+			OutputValue:       strconv.FormatUint(v.OutputValue, 10),
+			Parent:            v.Parent,
+			Sat:               strconv.FormatUint(v.Sat, 10), // sat_ordinal
+			Satpoint:          v.Satpoint,                    // location
+			GenesisTimestamp:  time.Unix(v.Timestamp, 0),
+			Charms:            v.Charms,
+			CharmsExtended:    v.CharmsExtended,
+			SatRarity:         v.SatRarity,
+			Metadata:          v.Metadata,
+			MetadataHex:       v.MetadataHex,
+			MetaProtocol:      v.MetaProtocol,
+			ContentEncoding:   v.ContentEncoding,
+			Content:           v.Content,
+			Recursive:         v.Recursive,
+			RecursiveRefs:     v.RecursiveRefs,
+			SatpointOutpoint:  v.SatpointOutpoint,
+			SatpointOffset:    strconv.FormatUint(v.SatpointOffset, 10), // offset
 		})
 	}
 
@@ -322,7 +308,7 @@ func getAndSetStartingBlockFromDB() int {
 		return block
 	}
 	if len(results) > 0 {
-		return int(results[0].GenesisBlockHeight)
+		return int(results[0].GenesisHeight)
 	}
 	return block
 }
@@ -383,7 +369,7 @@ type Block struct {
 }
 
 type InscriptionExtended struct {
-	// Address           string   `json:"address"`
+	Address           string   `json:"address"`
 	Children          []string `json:"children"`
 	ContentLength     int      `json:"content_length"`
 	ContentType       string   `json:"content_type"`
@@ -402,8 +388,8 @@ type InscriptionExtended struct {
 	Charms           uint16                 `json:"charms,omitempty"`          // uint16 representing combination of charms
 	CharmsExtended   []Charm                `json:"charms_extended,omitempty"` // Decoded charms with title and icon emoji
 	SatRarity        string                 `json:"sat_rarity,omitempty"`
-	MetadataHex      string                 `json:"metadata_hex,omitempty"` // CBOR encoded. Decoded on conversion to DB type
 	Metadata         map[string]interface{} `json:"metadata,omitempty"`     // CBOR encoded. Decoded on conversion to DB type
+	MetadataHex      string                 `json:"metadata_hex,omitempty"` // CBOR encoded. Decoded on conversion to DB type
 	MetaProtocol     string                 `json:"meta_protocol,omitempty"`
 	ContentEncoding  string                 `json:"content_encoding,omitempty"`
 	Content          string                 `json:"content,omitempty"` // Escaped string which could be JSON, Markdown or plain text. Null otherwise
@@ -422,42 +408,30 @@ type Charm struct {
 }
 
 type DBInscription struct {
-	CreatedAt time.Time `bson:"created_at"`
-	UpdatedAt time.Time `bson:"updated_at"`
-	// Rune              string   `bson:"rune"` // uint128
-	ID                 string `bson:"id"`
-	Number             int32  `bson:"number"`
-	Address            string `bson:"address"`
-	GenesisAddress     string `bson:"genesis_address"`
-	GenesisBlockHeight uint32 `bson:"genesis_block_height"`
-	GenesisBlockHash   string `bson:"genesis_block_hash"`
-	GenesisTxID        string `bson:"genesis_tx_id"`
-	GenesisTimestamp   int64  `bson:"genesis_timestamp"`
-	TxID               string `bson:"tx_id"`
-	Location           string `bson:"location"`
-	Output             string `bson:"output"`
-	Value              string `bson:"value"`
-	Offset             string `bson:"offset"`
-	SatOrdinal         string `bson:"sat_ordinal"`
-	SatRarity          string `bson:"sat_rarity"`
-	// SatCoinbaseHeight string                 `bson:"sat_coinbase_height"`
-	ContentType     string                 `bson:"content_type"`
-	ContentLength   int                    `bson:"contentLength"`
-	Timestamp       time.Time              `bson:"timestamp"`
-	Recursive       bool                   `bson:"recursive,omitempty"`
-	RecursiveRefs   []string               `bson:"recursive_refs,omitempty"`
-	Children        []string               `bson:"children"`
-	Charms          uint16                 `bson:"charms,omitempty"` // uint16 representing combination of charms
-	CharmsExtended  []Charm                `bson:"charms_extended"`  // Decoded charms with title and icon emoji
-	MetadataHex     string                 `bson:"metadata_hex"`     // CBOR encoded. Decoded on conversion to DB type
-	Metadata        map[string]interface{} `bson:"metadata"`         // CBOR decoded json object
-	MetaProtocol    string                 `bson:"metaprotocol"`
-	ContentEncoding string                 `bson:"content_encoding"`
-	Content         string                 `bson:"content"` // Escaped string which could be JSON, Markdown or plain text. Null otherwise
-	Next            string                 `bson:"next"`
-	OutputValue     string                 `bson:"outputValue"`
-	Parent          string                 `bson:"parent,omitempty"`
-	Previous        string                 `bson:"previous"`
-	Sat             string                 `bson:"sat,omitempty"`
-	Satpoint        string                 `bson:"satpoint,omitempty"`
+	ContentLength     int                    `json:"content_length"`
+	ContentType       string                 `json:"content_type"`
+	GenesisFee        string                 `json:"genesis_fee"`
+	GenesisHeight     uint32                 `json:"genesis_height"`
+	GenesisTxID       string                 `json:"genesis_tx_id,omitempty"`
+	GenesisAddress    string                 `json:"genesis_address,omitempty"`
+	GenesisBlockHash  string                 `json:"genesis_block_hash,omitempty"`
+	InscriptionID     string                 `json:"inscription_id"`
+	InscriptionNumber int32                  `json:"inscription_number"`
+	OutputValue       string                 `json:"output_value"`
+	Parent            string                 `json:"parent,omitempty"`
+	Sat               string                 `json:"sat,omitempty"`
+	Satpoint          string                 `json:"satpoint,omitempty"`
+	GenesisTimestamp  time.Time              `json:"genesis_timestamp"`
+	Charms            uint16                 `json:"charms,omitempty"`
+	CharmsExtended    []Charm                `json:"charms_extended,omitempty"`
+	SatRarity         string                 `json:"sat_rarity,omitempty"`
+	Metadata          map[string]interface{} `json:"metadata,omitempty"`
+	MetadataHex       string                 `json:"metadata_hex,omitempty"`
+	MetaProtocol      string                 `json:"meta_protocol,omitempty"`
+	ContentEncoding   string                 `json:"content_encoding,omitempty"`
+	Content           string                 `json:"content,omitempty"`
+	Recursive         bool                   `json:"recursive,omitempty"`
+	RecursiveRefs     []string               `json:"recursive_refs,omitempty"`
+	SatpointOutpoint  string                 `json:"satpoint_outpoint,omitempty"`
+	SatpointOffset    string                 `json:"satpoint_offset,omitempty"`
 }
