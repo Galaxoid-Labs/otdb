@@ -244,12 +244,12 @@ func convertAndWriteInscriptionsToDB() {
 	for _, v := range inscriptions {
 		date := time.Now()
 		ins = append(ins, DBInscription{
-			CreatedAt:          date,
-			UpdatedAt:          date,
-			ID:                 v.InscriptionID,
-			Number:             v.InscriptionNumber,
-			Address:            v.Address,
-			GenesisAddress:     v.Address,
+			CreatedAt: date,
+			UpdatedAt: date,
+			ID:        v.InscriptionID,
+			Number:    v.InscriptionNumber,
+			// Address:            v.Address,
+			GenesisAddress:     v.GenesisAddress,
 			GenesisBlockHeight: v.GenesisHeight,
 			GenesisBlockHash:   v.BlockHash,
 			GenesisTxID:        v.TxID,
@@ -383,7 +383,7 @@ type Block struct {
 }
 
 type InscriptionExtended struct {
-	Address           string   `json:"address"`
+	// Address           string   `json:"address"`
 	Children          []string `json:"children"`
 	ContentLength     int      `json:"content_length"`
 	ContentType       string   `json:"content_type"`
@@ -413,6 +413,7 @@ type InscriptionExtended struct {
 	BlockHash        string                 `json:"block_hash,omitempty"`
 	SatpointOutpoint string                 `json:"satpoint_outpoint,omitempty"`
 	SatpointOffset   uint64                 `json:"satpoint_offset,omitempty"`
+	GenesisAddress   string                 `json:"genesis_address,omitempty"`
 }
 
 type Charm struct {
