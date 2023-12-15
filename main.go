@@ -50,7 +50,7 @@ func main() {
 		panic("MONGO_CONNECTION env var not set")
 	}
 
-	fmt.Println("Starting Ord Scraper")
+	fmt.Println("Starting otdb: Ordinals To Database")
 	fmt.Printf("Using Host: %v\n", host)
 
 	ConnectMongoDB()
@@ -87,7 +87,7 @@ func main() {
 }
 
 func ConnectMongoDB() {
-	fmt.Println("Connecting to MongoDB")
+	fmt.Println("Connecting to MongoDB...")
 	mongoOptions := options.Client().ApplyURI(mongoConnection)
 
 	var err error
@@ -152,7 +152,7 @@ func getAndWriteInscriptionIDs() {
 		spinner.Add(1)
 	}
 	spinner.Finish()
-	fmt.Print("\033[F")
+	fmt.Printf("\033[1A\033[K")
 }
 
 func getAndWriteInscriptions() {
@@ -277,12 +277,14 @@ func convertAndWriteInscriptionsToDB() {
 		coll = append(coll, s)
 	}
 
+	fmt.Printf("Writing %v inscriptions to DB for block: %v\n", len(inscriptions), block)
 	_, err := inscriptionsCollection.InsertMany(mongoCtx, coll, options.InsertMany().SetOrdered(false))
 	if err != nil {
 		fmt.Println(err)
 	}
-
+	fmt.Printf("\033[1A\033[K")
 	fmt.Printf("Wrote %v inscriptions to DB for block: %v\n", len(inscriptions), block)
+
 	for _, v := range inscriptions {
 		fmt.Printf("Block Timestamp: %v\n", time.Unix(int64(v.Timestamp), 0).Format(time.RFC1123))
 		break
@@ -291,7 +293,7 @@ func convertAndWriteInscriptionsToDB() {
 }
 
 func deleteInscriptionsFromBlock() {
-	fmt.Printf("Deleting inscriptions from last written block: %v\n", block)
+	fmt.Printf("Deleting inscriptions from last written block: %v... This can take some time\n", block)
 	_, err := inscriptionsCollection.DeleteMany(mongoCtx, bson.M{"genesis_height": block})
 	if err != nil {
 		fmt.Println(err)
@@ -299,6 +301,7 @@ func deleteInscriptionsFromBlock() {
 }
 
 func getAndSetStartingBlockFromDB() int {
+	fmt.Println("Getting last written block from DB... This can take some time")
 	v, err := inscriptionsCollection.Find(mongoCtx, bson.M{}, options.Find().SetSort(bson.D{{Key: "genesis_height", Value: -1}}).SetLimit(1))
 	if err != nil {
 		return block
