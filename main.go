@@ -163,8 +163,13 @@ func getAndWriteInscriptions() {
 		go func(id string) {
 			ins, err := getInscription(id)
 			if err != nil {
-				// TODO: Maybe retry this block on error.
-				panic(err)
+				// TODO: Handle this better. Saw last error on inscription 406bde23c0b7d88928ae97e1c9ef6a06ece2b02d2a7fec48fadc3c391841d5eai0
+				// Block 813897
+				// Problem was that metada came back as -4. Not sure why
+				fmt.Printf("Error getting inscription: %v\n", id)
+				bar.Add(1)
+				t.Done(nil)
+				return
 			}
 			mutex.Lock()
 			inscriptions[ins.InscriptionID] = *ins
