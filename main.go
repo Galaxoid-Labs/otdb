@@ -105,7 +105,12 @@ func ConnectMongoDB() {
 	if inscriptionsCollection == nil {
 		panic("inscriptionsCollection is nil")
 	}
-	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
+
+	createIndexes()
+}
+
+func createIndexes() {
+	_, err := inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "inscription_id", Value: 1}},
 		Options: options.Index().SetUnique(true),
 	})
@@ -122,12 +127,45 @@ func ConnectMongoDB() {
 	}
 
 	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "genesis_timestamp", Value: 1}},
+		Options: options.Index().SetUnique(false),
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "genesis_timestamp", Value: -1}},
+		Options: options.Index().SetUnique(false),
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "genesis_height", Value: 1}},
+		Options: options.Index().SetUnique(false),
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "genesis_height", Value: -1}},
+		Options: options.Index().SetUnique(false),
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "content_type", Value: "text"}, {Key: "content", Value: "text"}, {Key: "metaprotocol", Value: "text"}},
 		Options: options.Index().SetUnique(false),
 	})
 	if err != nil {
 		panic(err)
 	}
+
 	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "metadata.$**", Value: 1}},
 		Options: options.Index().SetUnique(false),
