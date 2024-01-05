@@ -126,13 +126,13 @@ func createIndexes() {
 		panic(err)
 	}
 
-	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "genesis_timestamp", Value: 1}},
-		Options: options.Index().SetUnique(false),
-	})
-	if err != nil {
-		panic(err)
-	}
+	// _, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
+	// 	Keys:    bson.D{{Key: "genesis_timestamp", Value: 1}},
+	// 	Options: options.Index().SetUnique(false),
+	// })
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "genesis_timestamp", Value: -1}},
@@ -143,20 +143,28 @@ func createIndexes() {
 	}
 
 	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "genesis_height", Value: 1}},
+		Keys:    bson.D{{Key: "content_type", Value: 1}},
 		Options: options.Index().SetUnique(false),
 	})
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "genesis_height", Value: -1}},
-		Options: options.Index().SetUnique(false),
-	})
-	if err != nil {
-		panic(err)
-	}
+	// _, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
+	// 	Keys:    bson.D{{Key: "genesis_height", Value: 1}},
+	// 	Options: options.Index().SetUnique(false),
+	// })
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// _, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
+	// 	Keys:    bson.D{{Key: "genesis_height", Value: -1}},
+	// 	Options: options.Index().SetUnique(false),
+	// })
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "content_type", Value: "text"}, {Key: "content", Value: "text"}, {Key: "metaprotocol", Value: "text"}},
