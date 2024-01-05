@@ -31,6 +31,7 @@ var (
 	inscriptions           = make(map[string]InscriptionExtended)
 	batchSize              = 500
 	block                  = 767430
+	waitTimeForUpdate      = 30 * time.Minute
 	host                   = os.Getenv("ORD_HOST")
 	mongoConnection        = os.Getenv("MONGO_CONNECTION")
 	mongoClient            *mongo.Client
@@ -54,7 +55,10 @@ func main() {
 	fmt.Printf("Using Host: %v\n", host)
 
 	ConnectMongoDB()
+	Start()
+}
 
+func Start() {
 	highestBlock, err := getHighestBlock()
 	if err != nil {
 		panic(err)
@@ -84,6 +88,11 @@ func main() {
 	}
 
 	fmt.Printf("Total Inscriptions: %v\n", len(inscriptions))
+	fmt.Println("Waiting for next update...")
+
+	time.Sleep(waitTimeForUpdate)
+
+	Start()
 }
 
 func ConnectMongoDB() {
@@ -150,13 +159,13 @@ func createIndexes() {
 		panic(err)
 	}
 
-	// _, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
-	// 	Keys:    bson.D{{Key: "genesis_height", Value: 1}},
-	// 	Options: options.Index().SetUnique(false),
-	// })
-	// if err != nil {
-	// 	panic(err)
-	// }
+	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "inscription_number", Value: -1}},
+		Options: options.Index().SetUnique(false),
+	})
+	if err != nil {
+		panic(err)
+	}
 
 	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "genesis_height", Value: -1}},
@@ -404,17 +413,6 @@ func decodeMetadata(v string) string {
 
 	return strEscaped
 }
-
-// func formatJSON(data []byte) string {
-// 	var out bytes.Buffer
-// 	err := json.Indent(&out, data, "", " ")
-// 	if err != nil {
-// 		fmt.Println(err)
-// 	}
-
-// 	d := out.Bytes()
-// 	return string(d)
-// }
 
 type Block struct {
 	Inscriptions []string `json:"inscriptions"`
