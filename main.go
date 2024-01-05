@@ -31,7 +31,7 @@ var (
 	inscriptions           = make(map[string]InscriptionExtended)
 	batchSize              = 500
 	block                  = 767430
-	waitTimeForUpdate      = 30 * time.Minute
+	waitTimeForUpdate      = 15 * time.Minute
 	host                   = os.Getenv("ORD_HOST")
 	mongoConnection        = os.Getenv("MONGO_CONNECTION")
 	mongoClient            *mongo.Client
@@ -87,7 +87,7 @@ func Start() {
 		block++
 	}
 
-	fmt.Printf("Total Inscriptions: %v\n", len(inscriptions))
+	// fmt.Printf("Total Inscriptions: %v\n", len(inscriptions))
 	fmt.Println("Waiting for next update...")
 
 	time.Sleep(waitTimeForUpdate)
