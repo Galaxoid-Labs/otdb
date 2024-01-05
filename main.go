@@ -22,8 +22,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// const ordHost = "http://38.99.82.238:8080"
-
 var (
 	retryClient            = retryablehttp.NewClient()
 	client                 = retryClient.StandardClient()
@@ -87,7 +85,6 @@ func Start() {
 		block++
 	}
 
-	// fmt.Printf("Total Inscriptions: %v\n", len(inscriptions))
 	fmt.Println("Waiting for next update...")
 
 	time.Sleep(waitTimeForUpdate)
