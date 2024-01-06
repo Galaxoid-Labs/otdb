@@ -350,7 +350,7 @@ func deleteInscriptionsFromBlock() {
 }
 
 func getAndSetStartingBlockFromDB() int {
-	fmt.Println("Getting last written block from DB... This can take some time")
+	fmt.Println("Getting last written block from DB...")
 	v, err := inscriptionsCollection.Find(mongoCtx, bson.M{}, options.Find().SetSort(bson.D{{Key: "genesis_height", Value: -1}}).SetLimit(1))
 	if err != nil {
 		return block
