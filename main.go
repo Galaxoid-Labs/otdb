@@ -29,7 +29,7 @@ var (
 	inscriptions           = make(map[string]InscriptionExtended)
 	batchSize              = 500
 	block                  = 767430
-	waitTimeForUpdate      = 15 * time.Minute
+	waitTimeForUpdate      = 5 * time.Minute
 	host                   = os.Getenv("ORD_HOST")
 	mongoConnection        = os.Getenv("MONGO_CONNECTION")
 	mongoClient            *mongo.Client
@@ -174,6 +174,14 @@ func createIndexes() {
 
 	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
 		Keys:    bson.D{{Key: "metadata.$**", Value: 1}},
+		Options: options.Index().SetUnique(false),
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = inscriptionsCollection.Indexes().CreateOne(mongoCtx, mongo.IndexModel{
+		Keys:    bson.D{{Key: "parent", Value: 1}},
 		Options: options.Index().SetUnique(false),
 	})
 	if err != nil {
@@ -429,8 +437,8 @@ type InscriptionExtended struct {
 	Charms           uint16                 `json:"charms,omitempty"`          // uint16 representing combination of charms
 	CharmsExtended   []Charm                `json:"charms_extended,omitempty"` // Decoded charms with title and icon emoji
 	SatRarity        string                 `json:"sat_rarity,omitempty"`
-	Metadata         map[string]interface{} `json:"metadata,omitempty"`     // CBOR encoded. Decoded on conversion to DB type
-	MetadataHex      string                 `json:"metadata_hex,omitempty"` // CBOR encoded. Decoded on conversion to DB type
+	Metadata         map[string]interface{} `json:"metadata,omitempty"`     // CBOR decoded. Arbitrary object
+	MetadataHex      string                 `json:"metadata_hex,omitempty"` // CBOR encoded hex
 	MetaProtocol     string                 `json:"meta_protocol,omitempty"`
 	ContentEncoding  string                 `json:"content_encoding,omitempty"`
 	Content          string                 `json:"content,omitempty"` // Escaped string which could be JSON, Markdown or plain text. Null otherwise
